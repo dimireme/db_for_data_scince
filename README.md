@@ -72,6 +72,8 @@ Home work at GB course "Databases for datascince"
    select YEAR(o_date) as 'year', count(DISTINCT user_id) from orders_short group by YEAR(o_date);
    ```
 
+   **не доделано**
+
 6. Найти ID самого активного по кол-ву покупок пользователя.
 
    ```sql
