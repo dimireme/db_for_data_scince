@@ -1,8 +1,8 @@
 # db_for_data_scince
 
-Home work at GB course "Databases for datascince"
+Домашние работы по курсу "Базы данных для аналитиков" от GeekBrains.
 
-### Lesson 1.
+### Урок 1. Аналитика в бизнес-задачах.
 
 1. Залить в свою БД данные по продажам (часть таблицы Orders в csv, исходник [здесь](https://drive.google.com/drive/folders/1C3HqIJcABblKM2tz8vPGiXTFT7MisrML?usp=sharing).
 
@@ -31,6 +31,9 @@ Home work at GB course "Databases for datascince"
    ```sql
    select YEAR(o_date) as 'year', ROUND(AVG(price), 0) as 'avg_price', count(id_o) / count(DISTINCT user_id) as avg_orders from orders_short group by YEAR(o_date);
    ```
+
+    <details>
+      <summary>Результат</summary>
 
    | year | avg_price | avg_orders |
    | ---- | --------- | ---------- |
@@ -65,6 +68,8 @@ Home work at GB course "Databases for datascince"
    | 2029 | 2352479   | 1.1751     |
    | 2030 | 2347706   | 1.1737     |
    | 2031 | 2279842   | 1.1523     |
+
+    </details>
 
 5) Найти кол-во пользователей, кот покупали в одном году и перестали покупать в следующем.
 
