@@ -87,10 +87,17 @@
 5) Найти кол-во пользователей, кот покупали в одном году и перестали покупать в следующем.
 
    ```sql
-   select YEAR(o_date) as 'year', count(DISTINCT user_id) from orders_short group by YEAR(o_date);
+    select count(t16.user_id) as 'count' from
+      (select DISTINCT user_id from orders_short where YEAR(o_date) = 2016) t16
+    left join
+      (select DISTINCT user_id from orders_short where YEAR(o_date) = 2017) t17
+    on t16.user_id = t17.user_id
+    where t17.user_id is null;
    ```
 
-   **не доделано**
+   | count |
+   | ----- |
+   | 50338 |
 
 6. Найти ID самого активного по кол-ву покупок пользователя.
 
