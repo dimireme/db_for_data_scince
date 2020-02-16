@@ -195,7 +195,7 @@ SELECT count(user_id) as 'count_users', sum(total_price) as sum_price, r, f, m F
 
 </details>
 
-Всего пользователей потраченных ими денег:
+Всего пользователей и потраченных ими денег:
 
 ```sql
 SELECT count(user_id), sum(total_price) FROM rfm_analys;
