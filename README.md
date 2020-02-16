@@ -166,6 +166,9 @@ GROUP BY user_id;
 SELECT count(user_id) as 'count_users', sum(total_price) as sum_price, r, f, m FROM rfm_analys GROUP BY r, f, m;
 ```
 
+<details>
+  <summary>результат</summary>
+
 | count_users | sum_price    | r   | f   | m   |
 | ----------- | ------------ | --- | --- | --- |
 | 2278        | 1415626.80   | 1   | 1   | 1   |
@@ -189,6 +192,8 @@ SELECT count(user_id) as 'count_users', sum(total_price) as sum_price, r, f, m F
 | 5           | 3701.60      | 3   | 3   | 1   |
 | 71          | 206940.30    | 3   | 3   | 2   |
 | 167         | 4687843.30   | 3   | 3   | 3   |
+
+</details>
 
 Всего пользователей потраченных ими денег:
 
