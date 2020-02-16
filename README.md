@@ -2,7 +2,8 @@
 
 Домашние работы по курсу "Базы данных для аналитиков" от GeekBrains.
 
-### Урок 1. Аналитика в бизнес-задачах.
+<details>
+  <summary>### Урок 1. Аналитика в бизнес-задачах.</summary>
 
 1. Залить в свою БД данные по продажам (часть таблицы Orders в csv, исходник [здесь](https://drive.google.com/drive/folders/1C3HqIJcABblKM2tz8vPGiXTFT7MisrML?usp=sharing).
 
@@ -108,3 +109,5 @@
    | user_id | orders |
    | ------- | ------ |
    | 765861  | 3183   |
+
+</details>
