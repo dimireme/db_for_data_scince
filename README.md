@@ -119,18 +119,20 @@
 
 1. Определяем критерии для каждой буквы R, F, M (т.е. к примеру, R – 3 для клиентов, которые покупали <= 30 дней от последней даты в базе, R – 2 для клиентов, которые покупали > 30 и менее 60 дней от последней даты в базе и т.д.)
 
+| номер | r               | f                | m                   |
+| ----- | --------------- | ---------------- | ------------------- |
+| 1     | 60 < days       | 20 <= period     | spend < 1000        |
+| 2     | 30 < days <= 60 | 10 <= period <20 | 1000 <= spend <5000 |
+| 3     | days <= 30      | period < 10      | 5000 <= spend       |
+
+При этом если пользователь совершил менее 4-х покупок, при определении периода f, он попадёт в категорию 1.
+
 2. Для каждого пользователя получаем набор из 3 цифр (от 111 до 333, где 333 – самые классные пользователи)
 
-3. Вводим группировку, к примеру, 333 и 233 – это Vip, 1XX – это Lost, остальные Regular ( можете ввести боле глубокую сегментацию)
-
-4. Для каждой группы из п. 3 находим кол-во пользователей, кот. попали в них и % товарооборота, которое они сделали на эти 2 года.
-
-5. Проверяем, что общее кол-во пользователей бьется с суммой кол-во пользователей по группам из п. 3 (если у вас есть логические ошибки в создании групп, у вас не собьются цифры). То же самое делаем и по деньгам.
-
-Решение.
-
 ```sql
-select
+DROP TABLE IF EXISTS `rfm_analys`;
+CREATE TABLE `rfm_analys`
+SELECT
 	user_id,
 	min(o_date) as first_activity,
 	max(o_date) as last_activity,
@@ -140,22 +142,99 @@ select
 		WHEN count(id_o) < 4 THEN "1"
 		ELSE (
 			CASE
-				WHEN (TIMESTAMPDIFF(DAY,min(o_date),max(o_date)) / (count(id_o) - 1)) < 5 THEN "3"
-				WHEN (TIMESTAMPDIFF(DAY,min(o_date),max(o_date)) / (count(id_o) - 1)) >= 5 AND (TIMESTAMPDIFF(DAY,min(o_date),max(o_date)) / (count(id_o) - 1)) < 10 THEN "2"
+				WHEN (TIMESTAMPDIFF(DAY,min(o_date),max(o_date)) / (count(id_o) - 1)) < 10 THEN "3"
+				WHEN (TIMESTAMPDIFF(DAY,min(o_date),max(o_date)) / (count(id_o) - 1)) >= 10 AND (TIMESTAMPDIFF(DAY,min(o_date),max(o_date)) / (count(id_o) - 1)) < 20 THEN "2"
 				ELSE "1" END
 		) END
 	as f,
 	CASE
-		WHEN sum(price) < 1000000 THEN "1"
-		WHEN sum(price) >= 1000000 AND sum(price) < 5000000 THEN "2"
+		WHEN sum(price) < 1000 THEN "1"
+		WHEN sum(price) >= 1000 AND sum(price) < 5000 THEN "2"
 		ELSE "3" end  AS m,
 	CASE
 		WHEN TIMESTAMPDIFF(DAY,max(o_date),date('2018-01-01')) >= 0 AND TIMESTAMPDIFF(DAY,max(o_date),date('2018-01-01')) < 30 THEN "1"
        	WHEN TIMESTAMPDIFF(DAY,max(o_date),date('2018-01-01')) >= 30 AND TIMESTAMPDIFF(DAY,max(o_date),date('2018-01-01')) < 60 THEN "2"
   		ELSE "3" end  AS r
-from orders_short
-where year(o_date) >= 2016 and year(o_date) <= 2017
-group by user_id;
+FROM orders
+WHERE YEAR(o_date) >= 2016 AND YEAR(o_date) <= 2017
+GROUP BY user_id;
 ```
+
+3. Вводим группировку, к примеру, 333 и 233 – это Vip, 1XX – это Lost, остальные Regular ( можете ввести боле глубокую сегментацию)
+
+```sql
+SELECT count(user_id) as 'count_users', sum(total_price) as sum_price, r, f, m FROM rfm_analys GROUP BY r, f, m;
+```
+
+| count_users | sum_price    | r   | f   | m   |
+| ----------- | ------------ | --- | --- | --- |
+| 2278        | 1415626.80   | 1   | 1   | 1   |
+| 4864        | 11119192.00  | 1   | 1   | 2   |
+| 909         | 9258659.90   | 1   | 1   | 3   |
+| 1           | 2183.30      | 1   | 2   | 2   |
+| 12          | 1209730.90   | 1   | 2   | 3   |
+| 4           | 9448.60      | 1   | 3   | 2   |
+| 17          | 4590434.10   | 1   | 3   | 3   |
+| 1728        | 1062237.40   | 2   | 1   | 1   |
+| 3485        | 8147398.00   | 2   | 1   | 2   |
+| 1072        | 12651483.60  | 2   | 1   | 3   |
+| 6           | 882138.60    | 2   | 2   | 3   |
+| 3           | 11225.90     | 2   | 3   | 2   |
+| 13          | 2347355.50   | 2   | 3   | 3   |
+| 29864       | 17187681.70  | 3   | 1   | 1   |
+| 51251       | 115306470.30 | 3   | 1   | 2   |
+| 10586       | 109157612.90 | 3   | 1   | 3   |
+| 9           | 28374.50     | 3   | 2   | 2   |
+| 22          | 1296271.90   | 3   | 2   | 3   |
+| 5           | 3701.60      | 3   | 3   | 1   |
+| 71          | 206940.30    | 3   | 3   | 2   |
+| 167         | 4687843.30   | 3   | 3   | 3   |
+
+Всего пользователей потраченных ими денег:
+
+```sql
+SELECT count(user_id), sum(total_price) FROM rfm_analys;
+```
+
+| count(user_id) | sum(total_price) |
+| -------------- | ---------------- |
+| 106367         | 300582011.10     |
+
+Добавим категории пользователей.
+
+```sql
+ALTER TABLE rfm_analys ADD category VARCHAR(10);
+UPDATE rfm_analys set category = (
+	CASE
+		WHEN (r='3' OR r='2') AND f = '3' AND m='3' THEN 'vip'
+		WHEN r='1'	THEN 'lost'
+		ELSE 'regular' END
+);
+```
+
+4. Для каждой группы из п. 3 находим кол-во пользователей, кот. попали в них и % товарооборота, которое они сделали на эти 2 года.
+
+```sql
+SELECT
+	sum(total_price) as total_spend,
+	concat(round(( sum(total_price)/ (SELECT sum(total_price) FROM rfm_analys) * 100 ),2),'%') AS percentage,
+	count(user_id) as users_count,
+	category
+FROM rfm_analys
+GROUP BY category
+ORDER BY total_spend DESC;
+```
+
+| total_spend  | percentage | users_count | category |
+| ------------ | ---------- | ----------- | -------- |
+| 265941536.70 | 88.48%     | 98102       | regular  |
+| 27605275.60  | 9.18%      | 8085        | lost     |
+| 7035198.80   | 2.34%      | 180         | vip      |
+
+5. Проверяем, что общее кол-во пользователей бьется с суммой кол-ва пользователей по группам из п. 3 (если у вас есть логические ошибки в создании групп, у вас не собьются цифры). То же самое делаем и по деньгам.
+
+Количество пользователей в пункте 4 `98102 + 8085 + 180 = 106367` совпадает с количеством пользователей в пункте 3.
+
+Количество потраченных денег в пункте 4 `265941536.70 + 27605275.60 + 7035198.80 = 300582011.1` совпадает со значением в пункте 3.
 
    </details>
