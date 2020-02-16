@@ -3,7 +3,7 @@
 Домашние работы по курсу "Базы данных для аналитиков" от GeekBrains.
 
 <details>
-  <summary>### Урок 1. Аналитика в бизнес-задачах.</summary>
+  <summary>Урок 1. Аналитика в бизнес-задачах.</summary>
 
 1. Залить в свою БД данные по продажам (часть таблицы Orders в csv, исходник [здесь](https://drive.google.com/drive/folders/1C3HqIJcABblKM2tz8vPGiXTFT7MisrML?usp=sharing).
 
@@ -111,3 +111,51 @@
    | 765861  | 3183   |
 
 </details>
+
+<details>
+  <summary>Урок 3. Типовые методы анализа данных. RFM-анализ</summary>
+
+Главная задача: сделать RFM-анализ на основе данных по продажам за 2 года.
+
+1. Определяем критерии для каждой буквы R, F, M (т.е. к примеру, R – 3 для клиентов, которые покупали <= 30 дней от последней даты в базе, R – 2 для клиентов, которые покупали > 30 и менее 60 дней от последней даты в базе и т.д.)
+
+2. Для каждого пользователя получаем набор из 3 цифр (от 111 до 333, где 333 – самые классные пользователи)
+
+3. Вводим группировку, к примеру, 333 и 233 – это Vip, 1XX – это Lost, остальные Regular ( можете ввести боле глубокую сегментацию)
+
+4. Для каждой группы из п. 3 находим кол-во пользователей, кот. попали в них и % товарооборота, которое они сделали на эти 2 года.
+
+5. Проверяем, что общее кол-во пользователей бьется с суммой кол-во пользователей по группам из п. 3 (если у вас есть логические ошибки в создании групп, у вас не собьются цифры). То же самое делаем и по деньгам.
+
+Решение.
+
+```sql
+select
+	user_id,
+	min(o_date) as first_activity,
+	max(o_date) as last_activity,
+	count(id_o) as orders_count,
+	sum(price) as total_price,
+	CASE
+		WHEN count(id_o) < 4 THEN "1"
+		ELSE (
+			CASE
+				WHEN (TIMESTAMPDIFF(DAY,min(o_date),max(o_date)) / (count(id_o) - 1)) < 5 THEN "3"
+				WHEN (TIMESTAMPDIFF(DAY,min(o_date),max(o_date)) / (count(id_o) - 1)) >= 5 AND (TIMESTAMPDIFF(DAY,min(o_date),max(o_date)) / (count(id_o) - 1)) < 10 THEN "2"
+				ELSE "1" END
+		) END
+	as f,
+	CASE
+		WHEN sum(price) < 1000000 THEN "1"
+		WHEN sum(price) >= 1000000 AND sum(price) < 5000000 THEN "2"
+		ELSE "3" end  AS m,
+	CASE
+		WHEN TIMESTAMPDIFF(DAY,max(o_date),date('2018-01-01')) >= 0 AND TIMESTAMPDIFF(DAY,max(o_date),date('2018-01-01')) < 30 THEN "1"
+       	WHEN TIMESTAMPDIFF(DAY,max(o_date),date('2018-01-01')) >= 30 AND TIMESTAMPDIFF(DAY,max(o_date),date('2018-01-01')) < 60 THEN "2"
+  		ELSE "3" end  AS r
+from orders_short
+where year(o_date) >= 2016 and year(o_date) <= 2017
+group by user_id;
+```
+
+   </details>
