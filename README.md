@@ -310,17 +310,69 @@ GROUP BY c.cogort, date_format((o.o_date), "%Y-%m");
 1.  Группа часто покупающих и которые последний раз покупали не так давно. Считаем сколько денег оформленного заказа приходится на 1 день. Умножаем на 30.
 
 ```sql
-select count(id_o) from orders where o_date < date('2017-12-01');
-
-select user_id, count(id_o), max(o_date), min(o_date)
+-- Определим среднее число покупок у пользователей
+select count(id_o) / count(DISTINCT user_id) as average_purchases
 from orders
-where o_date BETWEEN date('2017-11-16') AND date('2017-11-30')
-group by user_id;
-
-select user_id, max(o_date)
+where o_date < date('2017-12-01');
+-- Среднее число покупок 1,99. Определим общее число покупателей и число тех, кто сделал более 10 покупок
+select count(DISTINCT user_id)
 from orders
-where o_date < date('2017-12-01') AND TIMESTAMPDIFF(DAY, max(o_date), date('2017-12-01')) <= 15
-group by user_id;
+where o_date < date('2017-12-01');
+-- Всего покупателей 935 521.
+select count(t.user_id)
+from (
+	select
+		user_id,
+		count(id_o) as purchases
+	from orders
+	where o_date < date('2017-12-01')
+	group by user_id
+) t
+where t.purchases > 10;
+-- Часто покупающих 19 388.
+-- Из часто покупающих выберем тех, кто делал покупки с 16 по 31 ноября 2017.
+select
+	t.user_id,
+	t.purchases,
+	t.first_purchase,
+	t.last_purchase,
+	t.revenue,
+	t.revenue * 30 / TIMESTAMPDIFF(DAY,date(t.first_purchase),date(t.last_purchase)) as expected_purchase_per_month
+from (
+	select
+		user_id,
+		count(id_o) as purchases,
+		min(o_date) as first_purchase,
+		max(o_date) as last_purchase,
+		sum(price) as revenue
+	from orders
+	where o_date < date('2017-12-01')
+	group by user_id
+) t
+where
+	t.purchases > 10
+AND
+	t.last_purchase BETWEEN date('2017-11-16') AND date('2017-11-30');
+
+-- Просуммируем ожидаемый доход за месяц по часто покупающим клиентам.
+select
+	sum(t.revenue * 30 / TIMESTAMPDIFF(DAY,date(t.first_purchase),date(t.last_purchase))) as total_1
+from (
+	select
+		user_id,
+		count(id_o) as purchases,
+		min(o_date) as first_purchase,
+		max(o_date) as last_purchase,
+		sum(price) as revenue
+	from orders
+	where o_date < date('2017-12-01')
+	group by user_id
+) t
+where
+	t.purchases > 10
+AND
+	t.last_purchase BETWEEN date('2017-11-16') AND date('2017-11-30');
+-- Получили ожидаемую прибыль от первой группы 22 673 942.63
 ```
 
 2.  Группа часто покупающих, но которые не покупали уже значительное время. Так же можем сделать вывод, из такой группы за след месяц сколько купят и на какой сре чек.
