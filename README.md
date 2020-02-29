@@ -309,16 +309,27 @@ GROUP BY c.cogort, date_format((o.o_date), "%Y-%m");
 
 1.  Группа часто покупающих и которые последний раз покупали не так давно. Считаем сколько денег оформленного заказа приходится на 1 день. Умножаем на 30.
 
+Определим среднее число покупок у пользователей
+
 ```sql
--- Определим среднее число покупок у пользователей
 select count(id_o) / count(DISTINCT user_id) as average_purchases
 from orders
 where o_date < date('2017-12-01');
--- Среднее число покупок 1,99. Определим общее число покупателей и число тех, кто сделал более 10 покупок
+```
+
+Среднее число покупок 1,99.
+
+Определим общее число покупателей и число тех, кто сделал более 2 покупок
+
+```sql
 select count(DISTINCT user_id)
 from orders
 where o_date < date('2017-12-01');
--- Всего покупателей 935 521.
+```
+
+Всего покупателей 935 521.
+
+```sql
 select count(t.user_id)
 from (
 	select
@@ -328,9 +339,14 @@ from (
 	where o_date < date('2017-12-01')
 	group by user_id
 ) t
-where t.purchases > 10;
--- Часто покупающих 19 388.
--- Из часто покупающих выберем тех, кто делал покупки с 16 по 31 ноября 2017.
+where t.purchases > 2;
+```
+
+Часто покупающих 127 105.
+
+Из часто покупающих выберем тех, кто делал покупки с 1 по 30 ноября 2017.
+
+```sql
 select
 	t.user_id,
 	t.purchases,
@@ -350,11 +366,14 @@ from (
 	group by user_id
 ) t
 where
-	t.purchases > 10
+	t.purchases > 2
 AND
-	t.last_purchase BETWEEN date('2017-11-16') AND date('2017-11-30');
+	t.last_purchase BETWEEN date('2017-11-01') AND date('2017-11-30');
+```
 
--- Просуммируем ожидаемый доход за месяц по часто покупающим клиентам.
+Просуммируем ожидаемый доход за месяц по часто покупающим клиентам.
+
+```sql
 select
 	sum(t.revenue * 30 / TIMESTAMPDIFF(DAY,date(t.first_purchase),date(t.last_purchase))) as total_1
 from (
@@ -369,15 +388,347 @@ from (
 	group by user_id
 ) t
 where
-	t.purchases > 10
+	t.purchases > 2
 AND
-	t.last_purchase BETWEEN date('2017-11-16') AND date('2017-11-30');
--- Получили ожидаемую прибыль от первой группы 22 673 942.63
+	t.last_purchase BETWEEN date('2017-11-01') AND date('2017-11-30');
 ```
 
-2.  Группа часто покупающих, но которые не покупали уже значительное время. Так же можем сделать вывод, из такой группы за след месяц сколько купят и на какой сре чек.
-3.  Отдельно разобрать пользователей с 1 и 2 покупками за все время
+Получили ожидаемую прибыль от первой группы 108 932 704.76
+
+2.  Группа часто покупающих, но которые не покупали уже значительное время. Так же можем сделать вывод, из такой группы за след месяц сколько купят и на какой средний чек.
+
+```sql
+select
+	sum(t.revenue * 30 / TIMESTAMPDIFF(DAY,date(t.first_purchase),date('2017-11-30'))) as total_2
+from (
+	select
+		user_id,
+		count(id_o) as purchases,
+		min(o_date) as first_purchase,
+		max(o_date) as last_purchase,
+		sum(price) as revenue
+	from orders
+	where o_date < date('2017-12-01')
+	group by user_id
+) t
+where
+	t.purchases > 2
+AND
+	date(t.last_purchase) < date('2017-11-01');
+```
+
+Здесь взяли средние затраты в день, начиня со дня первой покупки, заканчивая датой анализа - 30 ноября 2017.
+
+Получили ожидаемую прибыль от второй группы 90 392 683.50 рублей.
+
+3.  Отдельно разобрать пользователей с 1 и 2 покупками за все время.
+
+Посчитаем, сколько времени проходит между первой и второй покупкой для покупателей, сделавших 2 и более заказов. Это будет сложный запрос, поэтому распишу его по шагам.
+
+Сперва получаем id пользователей, у которых более одного заказа:
+
+```sql
+select user_id
+from (
+	select
+    user_id,
+    count(id_o) as orders_count
+	from orders
+	where o_date < date('2017-12-01')
+	group by user_id
+) as t
+where t.orders_count > 1;
+```
+
+Выбираем все записи из таблицы только для этих клиентов:
+
+```sql
+select t1.*
+from orders t1
+left join (
+	select user_id
+	from (
+		select
+			user_id,
+			count(id_o) as orders_count
+		from orders
+		where o_date < date('2017-12-01')
+		group by user_id
+	) as t
+	where t.orders_count > 1
+) t2
+on t1.user_id = t2.user_id
+where t2.user_id IS NOT NULL
+order by t1.user_id;
+```
+
+Выбираем первые два заказа у пользователей, сделавших более одного заказа.
+
+```sql
+select * from
+(
+	select
+		ta.*,
+		if(
+			@typex=ta.user_id,
+			@rownum:=@rownum+1,
+			@rownum:=1+least(0,@typex:=ta.user_id)
+		) rown
+	from
+		(
+			select t1.*
+			from orders t1
+			left join (
+				select user_id
+				from (
+					select
+						user_id,
+						count(id_o) as orders_count
+					from orders
+					where o_date < date('2017-12-01')
+					group by user_id
+				) as t
+				where t.orders_count > 1
+			) t2
+			on t1.user_id = t2.user_id
+			where t2.user_id IS NOT NULL
+			order by t1.user_id
+		) ta,
+		(
+			select @rownum:=1, @typex:='_'
+		) zz
+	order by user_id, o_date
+) yy
+where rown < 3
+```
+
+Первые 10 записей выглядят так:
+
+| id_o    | user_id | price     | o_date     | rown |
+| ------- | ------- | --------- | ---------- | ---- |
+| 1241821 | 1       | 2799.300  | 2016-04-01 | 1    |
+| 5212711 | 1       | 11045.300 | 2017-01-08 | 2    |
+| 3281813 | 76      | 1248.100  | 2016-12-13 | 1    |
+| 6125480 | 76      | 615.300   | 2017-09-11 | 2    |
+| 2073453 | 90      | 1190.000  | 2016-07-16 | 1    |
+| 4990364 | 90      | 544.600   | 2017-06-25 | 2    |
+| 1660255 | 91      | 1073.800  | 2016-04-20 | 1    |
+| 1660501 | 91      | 1397.900  | 2016-04-20 | 2    |
+| 2813765 | 95      | 1099.000  | 2016-05-11 | 1    |
+| 1589301 | 95      | 212.100   | 2016-08-04 | 2    |
+
+Далее эту выборку группируем по user_id. В каждой группе будет по 2 записи - первая и вторая покупка клиента. Посчитаем средний интервал в днях между первой и второй покупкой:
+
+```sql
+select avg(days_between_first_and_second_purchase) from (
+	select
+		user_id,
+		TIMESTAMPDIFF(DAY, min(o_date), max(o_date)) as days_between_first_and_second_purchase
+	from (
+		select * from
+		(
+			select
+				ta.*,
+				if(
+					@typex=ta.user_id,
+					@rownum:=@rownum+1,
+					@rownum:=1+least(0,@typex:=ta.user_id)
+				) rown
+			from
+				(
+					select t1.*
+					from orders t1
+					left join (
+						select user_id
+						from (
+							select
+								user_id,
+								count(id_o) as orders_count
+							from orders
+							where o_date < date('2017-12-01')
+							group by user_id
+						) as t
+						where t.orders_count > 1
+					) t2
+					on t1.user_id = t2.user_id
+					where t2.user_id IS NOT NULL
+					order by t1.user_id
+				) ta,
+				(
+					select @rownum:=1, @typex:='_'
+				) zz
+			order by user_id, o_date
+		) yy
+		where rown < 3
+	) xx
+	group by user_id
+) uu;
+```
+
+Среднее время составило 85.6 дней.
+
+Аналогично рассчитаем средний интервал между второй и третьей покупкой:
+
+```sql
+select avg(days_between_second_and_third_purchase) from (
+	select
+		user_id,
+		TIMESTAMPDIFF(DAY, min(o_date), max(o_date)) as days_between_second_and_third_purchase
+	from (
+		select * from
+		(
+			select
+				ta.*,
+				if(
+					@typex=ta.user_id,
+					@rownum:=@rownum+1,
+					@rownum:=1+least(0,@typex:=ta.user_id)
+				) rown
+			from
+				(
+					select t1.*
+					from orders t1
+					left join (
+						select user_id
+						from (
+							select
+								user_id,
+								count(id_o) as orders_count
+							from orders
+							where o_date < date('2017-12-01')
+							group by user_id
+						) as t
+						where t.orders_count > 2
+					) t2
+					on t1.user_id = t2.user_id
+					where t2.user_id IS NOT NULL
+					order by t1.user_id
+				) ta,
+				(select @rownum:=1, @typex:='_') zz
+			order by user_id, o_date
+		) yy
+		where rown BETWEEN 2 AND 3
+	) xx
+	group by user_id
+) uu;
+```
+
+Среднее время составило 70.3 дня.
+
+Далее ещё немного подготовительных расчётов.
+
+Найдём вероятности того что клиент, сделав один заказ, сделает и второй. И того что клиент, сделав два заказа, сделает третий.
+
+```sql
+select count(user_id), t.orders_count
+from (
+	select
+		user_id,
+		count(id_o) as orders_count
+	from orders
+	where o_date < date('2017-12-01')
+	group by user_id
+) as t
+group by t.orders_count;
+```
+
+Первые 10 строк результата:
+
+| count(user_id) | orders_count |
+| -------------- | ------------ |
+| 710608         | 1            |
+| 97808          | 2            |
+| 40177          | 3            |
+| 22527          | 4            |
+| 14526          | 5            |
+| 9944           | 6            |
+| 7313           | 7            |
+| 5524           | 8            |
+| 4293           | 9            |
+| 3413           | 10           |
+
+Общее число покупателей 935 521.
+
+Покупателей, сделавших только одну покупку 710 608.
+
+Покупателей, сделавших только две покупки 97 808.
+
+Из этих данных найдём вероятность того что пользователь с одним заказом сделает второй заказ:
+
+`second_purchase_probability = 1 - 710608/935521 = 0.24`
+
+Вероятность того, что пользователь с двумя заказами сделает третий заказ:
+
+`third_purchase_probability = 1 - 97808 / (935521 - 710608) = 0.57`
+
+Разберём пользователей, совершивших только один заказ и у которых потенциальная дата второго заказа выпадет на декабрь 2017 года.
+
+```sql
+select sum(revenue)
+from (
+	select
+		user_id,
+		count(id_o) as orders_count,
+		max(o_date) as purchase_date,
+		sum(price) as revenue
+	from orders
+	where o_date < date('2017-12-01')
+	group by user_id
+) as t
+where t.orders_count = 1
+and TIMESTAMPDIFF(day, purchase_date, date('2017-12-31')) < 86;
+```
+
+Получили сумму 234 502 888.2 рублей. Пока примем что второй заказ будет на ту же сумму и 24% клиентов сделают этот второй заказ.
+
+Тогда рассчетная прибыль от этой группы клиентов в декабре 2017 составит 56 374 494.32 рублей.
+
+Аналогичный расчёт для клиентов, сделавших два заказа.
+
+```sql
+select sum(revenue)
+from (
+	select
+		user_id,
+		count(id_o) as orders_count,
+		max(o_date) as purchase_date,
+		sum(price) as revenue
+	from orders
+	where o_date < date('2017-12-01')
+	group by user_id
+) as t
+where t.orders_count = 2
+and TIMESTAMPDIFF(day, purchase_date, date('2017-12-31')) < 71;
+```
+
+Получили сумму 81 597 610.5 рублей. Примем что третий заказ будет на ту же сумму и 57% клиентов сделают этот третий заказ.
+
+Рассчетная прибыль от этой группы клиентов в декабре 2017 составит 46 113 227.26 рублей.
+
 4.  В итоге у вас будет прогноз ТО и вы сможете его сравнить с фактом и оценить грубо разлет по данным.
-    ​
-    Как источник данных используем данные по продажам за 2 года.
-       </details>
+
+```sql
+select sum(price) as revenue
+from orders
+where o_date >= date('2017-12-01')
+```
+
+| revenue       |
+| ------------- |
+| 322948401.300 |
+
+Фактически в декабре 2017 было сдлано покупок на 322 948 401.3 рублей.
+
+Расчётная сумма
+
+```text
+ 108 932 704.76 +
+  90 392 683.50 +
+  56 374 494.32 +
+  46 113 227.26 =
+ 301 813 109.84 рубля.
+```
+
+Погрешность составила 6,5%.
+
+</details>
