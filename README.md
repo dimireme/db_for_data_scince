@@ -736,7 +736,7 @@ where o_date >= date('2017-12-01')
 </details>
 
 <details>
-	<summary>Хранилища данных для анализа</summary>
+	<summary>Урок 6. Хранилища данных для анализа.</summary>
 
 1. Продумать логику работы рекомендательного сервиса для сайта дестких товаров
 2. На каких страницах может быть показан блок рекомендаций
@@ -745,14 +745,14 @@ where o_date >= date('2017-12-01')
 5. Продумать написание скрипта, который в типовой структуре БД инет-магазина найдет наиболее часто встречаемый товар с добавленным в корзину товаром.
 
 ```sql
-	select product_id, count(order_id) as `match` from basket
-	where order_id IN (
-		select order_id from basket
-		where product_id = 196816
-	)
-	group by product_id
-	order by `match` DESC
-	limit 5;
+select product_id, count(order_id) as `match` from basket
+where order_id IN (
+	select order_id from basket
+	where product_id = 196816
+)
+group by product_id
+order by `match` DESC
+limit 5;
 ```
 
 | product_id | match |
@@ -764,5 +764,15 @@ where o_date >= date('2017-12-01')
 | 177744     | 49    |
 
 Как и ожидалось, самый часто встречаемый товар тот, по которому искали совпадение.
+
+Тот же запрос для товара с id 196817:
+
+| product_id | match |
+| ---------- | ----- |
+| 196817     | 181   |
+| 196889     | 15    |
+| 109723     | 12    |
+| 196851     | 8     |
+| 196838     | 7     |
 
 </details>
