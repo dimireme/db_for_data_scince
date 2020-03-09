@@ -820,4 +820,178 @@ limit 5;
 
 Исходник баскета: https://drive.google.com/open?id=1Mny5vMvBMCanejc9AEA8y4SVwvgWGd0S
 
+Запрос будет сложным, поэтому распишу его по шагам. В таблице имеются следующие колонки: `id`, `order_id`, `product_id`, `quantity`, `price`.
+
+Сперва посчитаем стоимости каждого заказа, сгруппировав данные по `order_id`.
+
+```sql
+SELECT
+	order_id,
+	sum(quantity * price) as order_revenue
+FROM basket
+GROUP BY order_id;
+```
+
+| order_id | order_revenue |
+| -------- | ------------- |
+| 129      | 1310.0000     |
+| 130      | 260.0000      |
+| 131      | 260.0000      |
+| 132      | 1120.0000     |
+| 133      | 3230.0000     |
+| 134      | 1380.0000     |
+| 135      | 9500.0000     |
+| 137      | 1800.0000     |
+| 138      | 22350.0000    |
+| 141      | 820.0000      |
+
+Далее сформируем пары товаров, используя join таблицы самой на себя. Так как одна пара товаров в одном заказе может встретиться только один раз, то сразу же к этому запросу подошьём стоимости заказов, вычисленные на предыдущем шаге:
+
+```sql
+SELECT
+	concat(b1.product_id, '_', b2.product_id) as product_pair,
+	b1.product_id as p1,
+	b2.product_id as p2,
+	b1.order_id as order_id,
+	b1.quantity * b1.price as p1_at_group,
+	b2.quantity * b2.price as p2_at_group,
+	orders.order_revenue as order_revenue
+FROM basket b1
+JOIN basket b2
+ON b1.order_id = b2.order_id
+JOIN (
+	SELECT
+		order_id,
+		sum(quantity * price) as order_revenue
+	FROM basket
+	GROUP BY order_id
+) orders
+ON orders.order_id = b1.order_id
+WHERE b1.product_id < b2.product_id;
+```
+
+| product_pair  | p1     | p2     | order_id | p1_at_group | p2_at_group | order_revenue |
+| ------------- | ------ | ------ | -------- | ----------- | ----------- | ------------- |
+| 109614_118060 | 109614 | 118060 | 135      | 4760.0000   | 410.0000    | 9500.0000     |
+| 109614_113544 | 109614 | 113544 | 135      | 4760.0000   | 4330.0000   | 9500.0000     |
+| 113544_118060 | 113544 | 118060 | 135      | 4330.0000   | 410.0000    | 9500.0000     |
+| 115865_134873 | 115865 | 134873 | 137      | 710.0000    | 550.0000    | 1800.0000     |
+| 115865_136088 | 115865 | 136088 | 137      | 710.0000    | 540.0000    | 1800.0000     |
+| 134873_136088 | 134873 | 136088 | 137      | 550.0000    | 540.0000    | 1800.0000     |
+| 99131_130047  | 99131  | 130047 | 138      | 1120.0000   | 21230.0000  | 22350.0000    |
+| 114887_124370 | 114887 | 124370 | 144      | 340.0000    | 270.0000    | 2080.0000     |
+| 114887_120212 | 114887 | 120212 | 144      | 340.0000    | 420.0000    | 2080.0000     |
+| 114248_124370 | 114248 | 124370 | 144      | 380.0000    | 270.0000    | 2080.0000     |
+
+Здесь `p1_at_group` и `p2_at_group` - вклад каждого товара в группе, а `order_revenue` - стоимость всего заказа для данной группы.
+
+Так же посчитаем суммарный товарооборот для каждого товара, сгруппировав данные из таблицы по `product_id`:
+
+```sql
+SELECT
+	product_id,
+	sum(quantity * price) as total_revenue
+FROM basket
+GROUP BY product_id;
+```
+
+| product_id | total_revenue |
+| ---------- | ------------- |
+| 94602      | 1284.0000     |
+| 94605      | 171650.0000   |
+| 94606      | 1280.0000     |
+| 94607      | 720.0000      |
+| 94608      | 7820.0000     |
+| 94616      | 2940.0000     |
+| 94619      | 520.0000      |
+| 94626      | 300.0000      |
+| 94627      | 4070.0000     |
+| 94628      | 1800.0000     |
+
+Эти данные будем склеивать с данными по группе для товаров 1 и 2, чтобы иметь представление, какая доля от общего товарооборота по каждому товару приходится на конкретную группу.
+
+Результирующий запрос:
+
+```sql
+SELECT
+	gr.product_pair,
+	gr.p1,
+	gr.p2,
+	gr.orders_count,
+	gr.p1_groups_revenue as p1_at_group,
+	gr.p2_groups_revenue as p2_at_group,
+	gr.orders_revenue,
+	single_p1.total_revenue as p1_total,
+	single_p2.total_revenue as p2_total
+FROM (
+	SELECT
+		pairs.product_pair as product_pair,
+		SUBSTRING_INDEX(SUBSTRING_INDEX(pairs.product_pair, '_', 1), '_', -1) as p1,
+		SUBSTRING_INDEX(SUBSTRING_INDEX(pairs.product_pair, '_', 2), '_', -1) as p2,
+		count(pairs.order_id) as orders_count,
+		sum(pairs.p1_group_revenue) as p1_groups_revenue,
+		sum(pairs.p2_group_revenue) as p2_groups_revenue,
+		sum(pairs.order_revenue) as orders_revenue
+	FROM (
+		SELECT
+			concat(b1.product_id, '_', b2.product_id) as product_pair,
+			b1.product_id as p1,
+			b1.order_id as order_id,
+			b1.quantity * b1.price as p1_group_revenue,
+			b2.quantity * b2.price as p2_group_revenue,
+			orders.order_revenue as order_revenue
+		FROM basket b1
+		JOIN basket b2
+		ON b1.order_id = b2.order_id
+		JOIN (
+			SELECT
+				order_id,
+				sum(quantity * price) as order_revenue
+			FROM basket
+			GROUP BY order_id
+		) orders
+		ON orders.order_id = b1.order_id
+		WHERE b1.product_id < b2.product_id
+	) pairs
+	GROUP BY pairs.product_pair
+) gr
+LEFT JOIN (
+	SELECT
+		product_id,
+		sum(quantity * price) as total_revenue
+	FROM basket
+	GROUP BY product_id
+) single_p1
+ON gr.p1 = single_p1.product_id
+LEFT JOIN (
+	SELECT
+		product_id,
+		sum(quantity * price) as total_revenue
+	FROM basket
+	GROUP BY product_id
+) single_p2
+ON gr.p2 = single_p2.product_id;
+```
+
+| product_pair  | p1     | p2     | orders_count | p1_at_group | p2_at_group | orders_revenue | p1_total | p2_total  |
+| ------------- | ------ | ------ | ------------ | ----------- | ----------- | -------------- | -------- | --------- |
+| 100000_100990 | 100000 | 100990 | 1            | 420.0000    | 110.0000    | 2110.0000      | 840.0000 | 1070.0000 |
+| 100000_104695 | 100000 | 104695 | 1            | 420.0000    | 250.0000    | 4530.0000      | 840.0000 | 1450.0000 |
+| 100000_110872 | 100000 | 110872 | 1            | 420.0000    | 110.0000    | 2110.0000      | 840.0000 | 490.0000  |
+| 100000_121369 | 100000 | 121369 | 1            | 420.0000    | 180.0000    | 4530.0000      | 840.0000 | 1910.0000 |
+| 100000_123980 | 100000 | 123980 | 1            | 420.0000    | 190.0000    | 4530.0000      | 840.0000 | 6750.0000 |
+| 100000_124626 | 100000 | 124626 | 1            | 420.0000    | 210.0000    | 4530.0000      | 840.0000 | 210.0000  |
+| 100000_127348 | 100000 | 127348 | 1            | 420.0000    | 190.0000    | 4530.0000      | 840.0000 | 5700.0000 |
+| 100000_127391 | 100000 | 127391 | 1            | 420.0000    | 120.0000    | 2110.0000      | 840.0000 | 800.0000  |
+| 100000_127617 | 100000 | 127617 | 1            | 420.0000    | 690.0000    | 2110.0000      | 840.0000 | 7590.0000 |
+| 100000_132584 | 100000 | 132584 | 1            | 420.0000    | 200.0000    | 2110.0000      | 840.0000 | 8992.0000 |
+
+Здесь дважды использовали left join результата из предыдущего запроса, так как нам нужны данные по товарообороту и для p1 и для p2, а эти товары в группах не повторяются (то есть если есть группа p1p2, то группа p2p1 уже не встретится). В результате видим вклад каждого товара в группу, ценность всей группы по всем заказам и отдельный вклад каждого товара.
+
+Предположу, как можно использовать получившийся результат.
+
+1. Можно отсортировать результат по `gr.orders_count`, чтобы понять какие товары чаще всего покупают вместе. Например, товары 193396 и 193463 вместе покупали чаще всего - 173 раза. Товары 193574 и 193583 - 138 раз.
+
+2. Отношение `p1_at_group` к ``
+
 </details>
